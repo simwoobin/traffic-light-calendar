@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>신호등 캘린더</title>
+<style>
+    /* 기본 스타일 */
+    body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f0f0f0;
+        color: #333;
+    }
+    .calendar-container {
+        width: 700px;
+        text-align: center;
+    }
+    .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .day-of-week {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        margin-bottom: 10px;
+        font-weight: bold;
+        font-size: 16px;
+        color: #666;
+    }
+    .calendar {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 3px;
+        font-size: 14px;
+    }
+    .day {
+        position: relative;
+        text-align: left;
+        padding: 6px;
+        font-size: 12px;
+        height: 80px;
+        border-radius: 5px;
+        background-color: transparent;
+        cursor: pointer;
+        overflow: hidden;
+    }
+    .day .date {
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        font-size: 12px;
+    }
+    .current-month {
+        background-color: #f9f9f9;
+        color: #333;
+    }
+    .other-month {
+        background-color: #e0e0e0;
+        color: #aaa;
+    }
+    .low-completion { background-color: #ffcccc; }
+    .mid-completion { background-color: #fff0b3; }
+    .high-completion { background-color: #d4edda; }
+    .task-popup {
+        position: absolute;
+        bottom: 5px;
+        left: 5px;
+        font-size: 10px;
+        color: rgba(0, 0, 0, 0.4);
+        padding: 0;
+        max-height: 60px; /* 높이 제한 */
+        width: 100%;
+        overflow-y: auto; /* 스크롤 기능 유지 */
+        white-space: normal;
+        text-align: left;
+        scrollbar-width: none; /* Firefox에서 스크롤바 숨기기 */
+    }
+    .task-popup::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Edge에서 스크롤바 숨기기 */
+    }
+    .note-popup {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 300px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        padding: 15px;
+        z-index: 1000;
+    }
+    .note-header {
+        font-weight: bold;
+        font-size: 14px;
+        margin-bottom: 10px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #ddd;
+    }
+    .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.3);
+        display: none;
+        z-index: 900;
+    }
+    .navigation-btn {
+        font-size: 16px;
+        cursor: pointer;
+    }
+    .tasks {
+        margin-top: 10px;
+        max-height: 200px;
+        overflow-y: auto;
+        position: relative;
+    }
+    .task-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    .task-input {
+        border: none;
+        border-bottom: 1px solid #ddd;
+        width: 100%;
+        outline: none;
+        font-size: 14px;
+        margin-left: 5px;
+    }
+    .task-input.completed {
+        text-decoration: line-through;
+        color: #999;
+    }
+    .add-circle-btn {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        background-color: #4CAF50;
+        color: white;
+        font-size: 18px; /* 기존보다 작게 설정 */
+        border: none;
+        border-radius: 50%;
+        width: 30px; /* 작게 설정 */
+        height: 30px; /* 작게 설정 */
+        cursor: pointer;
+    }
+</style>
+</head>
+<body>
+
+<div class="calendar-container">
+    <div class="calendar-header">
+        <span class="navigation-btn" id="prevMonth">&lt; 이전 달</span>
+        <div id="monthYear"></div>
+        <span class="navigation-btn" id="nextMonth">다음 달 &gt;</span>
+    </div>
+    <div class="day-of-week">
+        <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+    </div>
+    <div class="calendar" id="calendar"></div>
+</div>
+
+<div class="overlay"></div>
+
+<div class="note-popup" id="notePopup">
+    <div class="note-header" id="popupTitle"></div>
+    <div class="tasks" id="tasks"></div>
+    <button class="add-circle-btn" id="addCircleBtn">+</button>
+</div>
+
+<script>
+    const notePopup = document.getElementById('notePopup');
+    const overlay = document.querySelector('.overlay');
+    const calendar = document.getElementById('calendar');
+    const monthYear = document.getElementById('monthYear');
+    const prevMonthBtn = document.getElementById('prevMonth');
+    const nextMonthBtn = document.getElementById('nextMonth');
+    const tasksContainer = document.getElementById('tasks');
+    const popupTitle = document.getElementById('popupTitle');
+    const addCircleBtn = document.getElementById('addCircleBtn');
+
+    let currentYear = new Date().getFullYear();
+    let currentMonth = new Date().getMonth();
+    const tasksByDate = {};
+
+    function renderCalendar() {
+        calendar.innerHTML = '';
+        const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+        const lastDateOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        const lastDateOfPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+        monthYear.innerText = `${currentYear}년 ${currentMonth + 1}월`;
+
+        for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+            const day = document.createElement('div');
+            day.classList.add('day', 'other-month');
+            const dateSpan = document.createElement('span');
+            dateSpan.classList.add('date');
+            dateSpan.innerText = lastDateOfPrevMonth - i;
+            day.appendChild(dateSpan);
+            calendar.appendChild(day);
+        }
+
+        for (let date = 1; date <= lastDateOfMonth; date++) {
+            const day = document.createElement('div');
+            day.classList.add('day', 'current-month');
+            const dateSpan = document.createElement('span');
+            dateSpan.classList.add('date');
+            dateSpan.innerText = date;
+            day.appendChild(dateSpan);
+
+            day.addEventListener('click', () => {
+                showPopup(date);
+            });
+
+            updateDayBackground(date, day);
+            calendar.appendChild(day);
+        }
+
+        const totalCells = 42;
+        const currentCells = calendar.children.length;
+        for (let i = 1; i <= totalCells - currentCells; i++) {
+            const day = document.createElement('div');
+            day.classList.add('day', 'other-month');
+            const dateSpan = document.createElement('span');
+            dateSpan.classList.add('date');
+            dateSpan.innerText = i;
+            day.appendChild(dateSpan);
+            calendar.appendChild(day);
+        }
+    }
+
+    function showPopup(date) {
+        const formattedDate = `${currentYear}-${currentMonth + 1}-${date}`;
+        popupTitle.innerText = formattedDate;
+        tasksContainer.innerHTML = '';
+
+        const tasks = tasksByDate[formattedDate] || [];
+        tasksByDate[formattedDate] = tasks;
+
+        tasks.forEach((task, index) => createTaskElement(task, formattedDate, index));
+
+        if (tasks.length === 0 || tasks[tasks.length - 1].text.trim() !== '') {
+            tasksByDate[formattedDate].push({ text: '', completed: false });
+            createTaskElement(tasksByDate[formattedDate][tasks.length], formattedDate, tasks.length);
+        }
+
+        notePopup.style.display = 'block';
+        overlay.style.display = 'block';
+    }
+
+    function createTaskElement(task, date, index) {
+        const taskDiv = document.createElement('div');
+        taskDiv.classList.add('task-item');
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = task.completed;
+        checkbox.addEventListener('change', () => {
+            task.completed = checkbox.checked;
+            updateTasks(date);
+            updateDayBackgroundByDate(date);
+        });
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.classList.add('task-input');
+        input.value = task.text;
+        input.addEventListener('input', () => {
+            task.text = input.value;
+            updateTasks(date);
+        });
+
+        if (task.completed) {
+            input.classList.add('completed');
+        }
+
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && input.value.trim() !== '') {
+                tasksByDate[date].push({ text: '', completed: false });
+                const newTaskIndex = tasksByDate[date].length - 1;
+                const newTaskInput = createTaskElement(tasksByDate[date][newTaskIndex], date, newTaskIndex);
+                updateTasks(date);
+                newTaskInput.focus();
+                updateDayBackgroundByDate(date);
+            } else if (event.key === 'Backspace' && input.value.trim() === '') {
+                tasksByDate[date].splice(index, 1);
+                taskDiv.remove();
+                updateTasks(date);
+                updateDayBackgroundByDate(date);
+            }
+        });
+
+        taskDiv.appendChild(checkbox);
+        taskDiv.appendChild(input);
+        tasksContainer.appendChild(taskDiv);
+        return input;
+    }
+
+    // 새로운 동그라미 메모 추가 함수
+    function addCircleMemo(date) {
+        const memoDiv = document.createElement('div');
+        memoDiv.classList.add('task-item');
+
+        const circle = document.createElement('span');
+        circle.textContent = '●';
+        circle.style.color = '#4CAF50'; // 동그라미 색상 설정
+        circle.style.marginRight = '10px';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.classList.add('task-input');
+        input.placeholder = '메모를 입력하세요';
+
+        input.addEventListener('keydown', (event) => {
+            if (event.key === 'Backspace' && input.value.trim() === '') {
+                memoDiv.remove();
+            }
+        });
+
+        memoDiv.appendChild(circle);
+        memoDiv.appendChild(input);
+        tasksContainer.appendChild(memoDiv);
+        input.focus();
+    }
+
+    addCircleBtn.addEventListener('click', () => {
+        const date = popupTitle.innerText;
+        addCircleMemo(date);
+    });
+
+    function updateTasks(date) {
+        const formattedDate = date;
+        tasksByDate[formattedDate] = Array.from(tasksContainer.querySelectorAll('.task-item')).map(taskDiv => ({
+            text: taskDiv.querySelector('.task-input').value,
+            completed: taskDiv.querySelector('input[type="checkbox"]')?.checked || false
+        }));
+    }
+
+    function updateDayBackgroundByDate(date) {
+        const dayElem = Array.from(calendar.getElementsByClassName('day')).find(day => {
+            return day.querySelector('.date')?.innerText == date;
+        });
+        if (dayElem) updateDayBackground(date, dayElem);
+    }
+
+    function updateDayBackground(date, dayElem) {
+        const formattedDate = `${currentYear}-${currentMonth + 1}-${date}`;
+        const tasks = tasksByDate[formattedDate] || [];
+
+        const validTasks = tasks.filter(task => task.text.trim() !== '');
+        const completedTasks = validTasks.filter(task => task.completed).length;
+        const completionRate = validTasks.length ? (completedTasks / validTasks.length) * 100: 0;
+
+        dayElem.classList.remove('low-completion', 'mid-completion', 'high-completion');
+
+        const existingTaskPopup = dayElem.querySelector('.task-popup');
+        if (existingTaskPopup) existingTaskPopup.remove();
+
+        if (validTasks.length > 0) {
+            const taskPopup = document.createElement('div');
+            taskPopup.classList.add('task-popup');
+            taskPopup.innerHTML = validTasks.map(task => `<div>${task.text}</div>`).join('');
+
+            dayElem.appendChild(taskPopup);
+
+            if (completionRate < 50) {
+                dayElem.classList.add('low-completion');
+            } else if (completionRate >= 50 && completionRate < 80) {
+                dayElem.classList.add('mid-completion');
+            } else if (completionRate >= 80) {
+                dayElem.classList.add('high-completion');
+            }
+        }
+    }
+
+    function closePopup() {
+        notePopup.style.display = 'none';
+        overlay.style.display = 'none';
+        const selectedDate = parseInt(popupTitle.innerText.split('-')[2]);
+        updateDayBackgroundByDate(selectedDate);
+    }
+
+    overlay.addEventListener('click', closePopup);
+    prevMonthBtn.addEventListener('click', () => {
+        currentMonth--;
+        if (currentMonth < 0) {
+            currentMonth = 11;
+            currentYear--;
+        }
+        renderCalendar();
+    });
+
+    nextMonthBtn.addEventListener('click', () => {
+        currentMonth++;        
+        if (currentMonth > 11) {
+            currentMonth = 0;
+            currentYear++;
+        }
+        renderCalendar();
+    });
+
+    renderCalendar();
+</script>
+
+</body>
+</html>
